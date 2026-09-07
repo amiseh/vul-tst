@@ -20,7 +20,7 @@
 > **Co to jest ten formularz konfiguracji?** W żargonie Home Assistanta nazywa się to `config_flow` — to standardowy mechanizm HA, dzięki któremu integrację ustawia się przez ekran "Ustawienia → Urządzenia i usługi → Dodaj integrację" zamiast ręcznie edytować `configuration.yaml`. Ten sam mechanizm obsługuje też ekran "wklej nowe ciasteczko", który zobaczysz, gdy sesja wygaśnie (tzw. reauth) — to po prostu kolejny krok tego samego formularza. Nie musisz nic o tym wiedzieć, żeby korzystać z integracji — to działa "samo".
 
 **Bazuje na:** [htomasz/vultron](https://github.com/htomasz/vultron) (autor: htomasz) \
-**Wersja:** 0.4.1 \
+**Wersja:** 1.0.1 \
 **Licencja:** GPL-3.0 (jak oryginał)
 
 # 📖 Spis treści
