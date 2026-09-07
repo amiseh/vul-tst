@@ -1,0 +1,377 @@
+class VultronGradesCard extends HTMLElement {
+  constructor() {
+    super();
+    this._sortMode = null;
+    this._periodMode = null; // null oznacza auto-wykrywanie z encji
+    this._listeners = [];    // przechowujemy listenery do czyszczenia
+    this._cachedState = null;
+    this._cachedSortMode = null;
+    this._cachedPeriodMode = null;
+  }
+
+  _normalizeDate(dateStr) {
+    if (!dateStr || typeof dateStr !== 'string') return '—';
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+    if (/^\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}$/.test(dateStr)) return dateStr.split(' ')[0];
+
+    const parts = dateStr.split('.').map(p => p.trim());
+    if (parts.length >= 2) {
+      const day   = parts[0].padStart(2, '0');
+      const month = parts[1].padStart(2, '0');
+      let year = parts[2] || new Date().getFullYear().toString();
+
+      if (year.length === 2) year = (parseInt(year, 10) < 70 ? '20' : '19') + year;
+
+      if (year.length === 4) return `${year}-${month}-${day}`;
+    }
+
+    return dateStr;
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (this._sortMode === null) this._sortMode = this.config.default_sort || 'date';
+
+    let baseEntity = this.config.entity;
+    let targetEntity = baseEntity;
+
+    if (this._periodMode) {
+      const suffix = baseEntity.endsWith('_p1') ? '_p1' : '_p2';
+      const newSuffix = `_p${this._periodMode}`;
+      targetEntity = baseEntity.replace(suffix, newSuffix);
+    }
+
+    const state = hass.states[targetEntity];
+
+    if (
+      this._cachedState === state &&
+      this._cachedSortMode === this._sortMode &&
+      this._cachedPeriodMode === this._periodMode
+    ) return;
+
+    this._cachedState = state;
+    this._cachedSortMode = this._sortMode;
+    this._cachedPeriodMode = this._periodMode;
+
+    if (!this.content) {
+      this.innerHTML = `
+        <style>
+          .grade-wrapper { position: relative; display: inline-block; cursor: pointer; }
+          .vultron-tooltip {
+            visibility: hidden; opacity: 0; width: 200px;
+            background: var(--ha-card-background, var(--card-background-color, white));
+            color: var(--primary-text-color); text-align: left; border-radius: 8px; padding: 10px;
+            position: absolute; z-index: 10; bottom: 125%; left: 50%;
+            transform: translateX(-50%) translateY(10px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2); border: 1px solid var(--divider-color);
+            transition: all 0.2s ease-in-out; pointer-events: none; backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px); font-size: 0.85em; line-height: 1.4;
+          }
+          .vultron-tooltip::after {
+            content: ""; position: absolute; top: 100%; left: 50%; margin-left: -5px;
+            border-width: 5px; border-style: solid; border-color: var(--divider-color) transparent transparent transparent;
+          }
+          .grade-wrapper:hover .vultron-tooltip { visibility: visible; opacity: 1; transform: translateX(-50%) translateY(0); }
+          .latest-grade-box { display: inline-block; background: var(--secondary-background-color); padding: 4px 10px; border-radius: 6px; border: 1px solid var(--divider-color); font-weight: bold; }
+          .tooltip-header { font-weight: bold; border-bottom: 1px solid var(--divider-color); margin-bottom: 5px; padding-bottom: 3px; display: block; color: var(--primary-color); }
+          .period-tab { cursor: pointer; padding: 2px 6px; border-radius: 4px; margin-right: 5px; font-size: 0.9em; }
+          .period-active { background: var(--primary-color); color: white; }
+        </style>
+        <ha-card>
+          <div style="padding: 16px;">
+            <div id="header-area">
+              <div style="margin-bottom: 10px; display: flex; justify-content: flex-start;">
+                <span id="p-1" class="period-tab" style="border: 1px solid var(--divider-color);">OKRES 1</span>
+                <span id="p-2" class="period-tab" style="border: 1px solid var(--divider-color);">OKRES 2</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 2px solid var(--primary-color); padding-bottom: 8px;">
+                <div id="grades-child-name" style="font-size: 1.1em; font-weight: 500; color: var(--primary-text-color);"></div>
+                <div style="display: flex; gap: 10px; font-size: 0.8em; font-weight: bold;">
+                  <span id="sort-sub" style="cursor: pointer;">PRZEDMIOTY</span>
+                  <span id="sort-dat" style="cursor: pointer;">NAJNOWSZE</span>
+                  <span id="sort-fin" style="cursor: pointer;">KOŃCOWE</span>
+                </div>
+              </div>
+            </div>
+            <div id="vultron-grades-body"></div>
+          </div>
+        </ha-card>
+      `;
+      this.content = this.querySelector('#vultron-grades-body');
+      this.headerArea = this.querySelector('#header-area');
+      this._nameEl   = this.querySelector('#grades-child-name');
+      this._p1El     = this.querySelector('#p-1');
+      this._p2El     = this.querySelector('#p-2');
+      this._sortSub  = this.querySelector('#sort-sub');
+      this._sortDat  = this.querySelector('#sort-dat');
+      this._sortFin  = this.querySelector('#sort-fin');
+
+      this._p1El.addEventListener('click', () => {
+        this._periodMode = 1;
+        this._cachedState = null; this._cachedSortMode = null; this._cachedPeriodMode = null;
+        this.hass = this._hass;
+      });
+      this._p2El.addEventListener('click', () => {
+        this._periodMode = 2;
+        this._cachedState = null; this._cachedSortMode = null; this._cachedPeriodMode = null;
+        this.hass = this._hass;
+      });
+      this._sortSub.addEventListener('click', () => {
+        this._sortMode = 'subject';
+        this._cachedState = null; this._cachedSortMode = null; this._cachedPeriodMode = null;
+        this.hass = this._hass;
+      });
+      this._sortDat.addEventListener('click', () => {
+        this._sortMode = 'date';
+        this._cachedState = null; this._cachedSortMode = null; this._cachedPeriodMode = null;
+        this.hass = this._hass;
+      });
+      this._sortFin.addEventListener('click', () => {
+        this._sortMode = 'final';
+        this._cachedState = null; this._cachedSortMode = null; this._cachedPeriodMode = null;
+        this.hass = this._hass;
+      });
+    }
+
+    if (!state || !state.attributes.lista_przedmiotow) {
+      this.content.innerHTML = `<div style="padding: 20px; text-align: center;">Brak danych dla wybranego okresu...</div>`;
+      if (state) this.renderHeader(state);
+      return;
+    }
+
+    this.renderHeader(state);
+    if (this._sortMode === 'subject') this.renderBySubject(state);
+    else if (this._sortMode === 'final') this.renderFinal(state);
+    else this.renderByDate(state);
+  }
+
+  renderHeader(state) {
+    const currentP = state.attributes.period_number;
+    const childName = state.attributes.friendly_name ? state.attributes.friendly_name.split('(')[0].replace('Oceny: ', '') : 'Dziecko';
+
+    this._nameEl.innerText = childName;
+
+    this._p1El.classList.toggle('period-active', currentP == 1);
+    this._p2El.classList.toggle('period-active', currentP == 2);
+
+    this._sortSub.style.color = this._sortMode === 'subject' ? 'var(--primary-color)' : 'var(--secondary-text-color)';
+    this._sortDat.style.color = this._sortMode === 'date'    ? 'var(--primary-color)' : 'var(--secondary-text-color)';
+    this._sortFin.style.color = this._sortMode === 'final'   ? 'var(--primary-color)' : 'var(--secondary-text-color)';
+  }
+
+  _clearListeners() {
+    this._listeners.forEach(({el, fn}) => {
+      if (el) el.removeEventListener('click', fn);
+    });
+    this._listeners = [];
+  }
+
+  disconnectedCallback() {
+    this._clearListeners();
+  }
+
+  // reszta metod bez zmian (getGradeColor, renderBySubject, renderByDate, setConfig, getCardSize)
+  getGradeColor(val) {
+    let color = "var(--primary-text-color)";
+    if (!val) return color;
+
+    const v = String(val).toUpperCase();
+
+    if (/[56AB]/.test(v)) color = "#4CAF50";
+    else if (/[12EF]/.test(v)) color = "#F44336";
+    else if (/[3CD]/.test(v)) color = "#FF9800";
+    else if (v.includes("NB")) color = "#9E9E9E";
+    else if (v.includes("%")) color = "#2196F3";
+
+    return color;
+  }
+
+  renderBySubject(state) {
+    let html = `<table style="width: 100%; border-collapse: collapse;">`;
+    state.attributes.lista_przedmiotow.forEach(p => {
+      const oceny = p.oceny || [];
+      const average = p.srednia;
+      const avgHtml = average ? `<div style="font-size: 0.8em; opacity: 0.6; font-weight: normal; margin-top: 2px;">Średnia: ${average}</div>` : '';
+
+      // Ocena proponowana i okresowa
+      const proponowana = p.proponowana || null;
+      const okresowa    = p.okresowa    || null;
+      let periodicHtml = '';
+      if (proponowana || okresowa) {
+        const propColor = proponowana ? 'var(--primary-color)' : 'var(--secondary-text-color)';
+        const okrColor  = okresowa    ? '#4CAF50'              : 'var(--secondary-text-color)';
+        periodicHtml = `<div style="font-size: 0.75em; margin-top: 3px; display: flex; gap: 4px; flex-wrap: wrap;">` +
+          (proponowana ? `<span style="color: ${propColor}; background: var(--secondary-background-color); border: 1px solid var(--divider-color); border-radius: 4px; padding: 1px 5px;" title="Proponowana ocena okresowa">prop: ${proponowana}</span>` : '') +
+          (okresowa    ? `<span style="color: ${okrColor};  background: var(--secondary-background-color); border: 1px solid var(--divider-color); border-radius: 4px; padding: 1px 5px;" title="Ocena okresowa">okr: ${okresowa}</span>`    : '') +
+        `</div>`;
+      }
+
+      html += `
+        <tr style="border-bottom: 1px solid var(--divider-color);">
+          <td style="padding: 12px 0; width: 35%; font-weight: 500; color: var(--primary-text-color); vertical-align: top;">
+            ${p.przedmiot}
+            ${avgHtml}
+            ${periodicHtml}
+          </td>
+          <td style="padding: 8px 0; display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end;">
+            ${oceny.map(o => {
+              const color = this.getGradeColor(o.w);
+              return `
+                <div class="grade-wrapper">
+                  <div style="background: var(--secondary-background-color); border: 1px solid var(--divider-color); border-radius: 6px; padding: 4px 8px; text-align: center; min-width: 40px;">
+                    <div style="font-weight: bold; color: ${color}; font-size: 1.1em;">${o.w}</div>
+                    <div style="font-size: 0.65em; opacity: 0.6; margin-top: -2px;">${o.d}</div>
+                  </div>
+                  <div class="vultron-tooltip">
+                    <span class="tooltip-header">${p.przedmiot}</span>
+                    ${o.i}
+                  </div>
+                </div>`;
+            }).join('')}
+          </td>
+        </tr>`;
+    });
+    this.content.innerHTML = html + `</table>`;
+  }
+
+  renderByDate(state) {
+    let allGrades = [];
+    state.attributes.lista_przedmiotow.forEach(p => {
+      (p.oceny || []).forEach(o => {
+        let sortKey = 0;
+        if (o.d && o.d.includes('.')) {
+          const [d, m] = o.d.split('.').map(Number);
+          sortKey = (m < 9 ? m + 12 : m) * 100 + d;
+        }
+        allGrades.push({ przedmiot: p.przedmiot, val: o.w, date: o.d, info: o.i, sortKey: sortKey });
+      });
+    });
+
+    allGrades.sort((a, b) => b.sortKey - a.sortKey);
+    const limit = parseInt(this.config.limit) || 0;
+    const gradesToDisplay = (limit > 0) ? allGrades.slice(0, limit) : allGrades;
+
+    let html = `<table style="width: 100%; border-collapse: collapse;">`;
+    gradesToDisplay.forEach(g => {
+      const color = this.getGradeColor(g.val);
+      const displayDate = this._normalizeDate(g.date);
+
+      html += `
+        <tr style="border-bottom: 1px solid var(--divider-color);">
+          <td style="padding: 10px 0; width: 35%; vertical-align: middle;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+              <div style="font-size: 1.1em; font-weight: 500; color: var(--primary-text-color); flex: 1;">
+                ${g.przedmiot}
+              </div>
+              <span style="
+                font-weight: bold;
+                color: var(--primary-color);
+                background: var(--secondary-background-color);
+                padding: 2px 6px;
+                border-radius: 6px;
+                font-size: 0.78em;
+                white-space: nowrap;
+              ">
+                ${displayDate}
+              </span>
+            </div>
+          </td>
+          <td style="padding: 10px 0; text-align: right;">
+            <div class="grade-wrapper">
+              <span class="latest-grade-box" style="color: ${color};">${g.val}</span>
+              <div class="vultron-tooltip" style="bottom: 100%; right: 0; left: auto; transform: translateY(-10px);">
+                <span class="tooltip-header">${g.przedmiot}</span>
+                ${g.info}
+              </div>
+            </div>
+          </td>
+        </tr>`;
+    });
+    this.content.innerHTML = html + `</table>`;
+  }
+
+  renderFinal(state) {
+    const lista = state.attributes.lista_przedmiotow || [];
+
+    // Pokazujemy wszystkie przedmioty które mają oceny cząstkowe lub są Zachowaniem
+    // (Zachowanie nie ma cyfr, ale zawsze powinno być widoczne)
+    const rows = lista
+      .map(p => ({
+        przedmiot:      p.przedmiot  || '',
+        proponowana:    (p.proponowana    != null && p.proponowana    !== '') ? p.proponowana    : null,
+        proponowana_num:(p.proponowana_num != null)                           ? p.proponowana_num : null,
+        okresowa:       (p.okresowa       != null && p.okresowa       !== '') ? p.okresowa       : null,
+        okresowa_num:   (p.okresowa_num   != null)                            ? p.okresowa_num   : null,
+      }))
+      .filter(r => r.proponowana !== null || r.okresowa !== null
+                || (r.przedmiot || '').toLowerCase() === 'zachowanie');
+
+    if (rows.length === 0) {
+      this.content.innerHTML = `<div style="padding: 20px; text-align: center; color: var(--secondary-text-color);">Brak ocen końcowych dla wybranego okresu.</div>`;
+      return;
+    }
+
+    // Średnie końcowe z atrybutów sensora (liczone w backendzie, bez Zachowania)
+    const sredniaProponowanych = (state.attributes.srednia_proponowanych != null)
+      ? Number(state.attributes.srednia_proponowanych).toFixed(3)
+      : null;
+    const sredniaOkresowych = (state.attributes.srednia_okresowych != null)
+      ? Number(state.attributes.srednia_okresowych).toFixed(3)
+      : null;
+
+    let html = `<table style="width: 100%; border-collapse: collapse;">`;
+    rows.forEach(r => {
+      const propColor = this.getGradeColor(r.proponowana);
+      const okrColor  = this.getGradeColor(r.okresowa);
+
+      const propCell = r.proponowana_num !== null
+        ? `<div style="text-align: center;">
+             <div style="font-size: 0.7em; opacity: 0.6; margin-bottom: 2px;">proponowana</div>
+             <span style="font-weight: bold; font-size: 1.1em; color: ${propColor};">${r.proponowana_num}</span>
+           </div>`
+        : `<div style="text-align: center; opacity: 0.3; font-size: 0.8em;">—</div>`;
+
+      const okrCell = r.okresowa_num !== null
+        ? `<div style="text-align: center;">
+             <div style="font-size: 0.7em; opacity: 0.6; margin-bottom: 2px;">końcowa</div>
+             <span style="font-weight: bold; font-size: 1.1em; color: ${okrColor};">${r.okresowa_num}</span>
+           </div>`
+        : `<div style="text-align: center; opacity: 0.3; font-size: 0.8em;">—</div>`;
+
+      html += `
+        <tr style="border-bottom: 1px solid var(--divider-color);">
+          <td style="padding: 10px 0; font-weight: 500; color: var(--primary-text-color);">${r.przedmiot}</td>
+          <td style="padding: 10px 0; width: 90px;">${propCell}</td>
+          <td style="padding: 10px 0; width: 90px;">${okrCell}</td>
+        </tr>`;
+    });
+
+    // Wiersze ze średnimi na dole tabeli (bez Zachowania)
+    if (sredniaProponowanych !== null) {
+      html += `
+        <tr style="border-top: 2px solid var(--primary-color);">
+          <td colspan="2" style="padding: 10px 0 4px 0; font-size: 0.85em; color: var(--secondary-text-color);">Średnia proponowanych</td>
+          <td style="padding: 10px 0 4px 0; text-align: center;">
+            <span style="font-weight: bold; font-size: 1.15em; color: var(--primary-color);">${sredniaProponowanych}</span>
+          </td>
+        </tr>`;
+    }
+    if (sredniaOkresowych !== null) {
+      html += `
+        <tr>
+          <td colspan="2" style="padding: 4px 0 8px 0; font-size: 0.85em; color: var(--secondary-text-color);">Średnia końcowych</td>
+          <td style="padding: 4px 0 8px 0; text-align: center;">
+            <span style="font-weight: bold; font-size: 1.15em; color: #4CAF50;">${sredniaOkresowych}</span>
+          </td>
+        </tr>`;
+    }
+
+    this.content.innerHTML = html + `</table>`;
+  }
+
+  setConfig(config) { if (!config.entity) throw new Error("Entity missing"); this.config = config; }
+  getCardSize() { return 8; }
+}
+
+customElements.define("vultron-grades-card", VultronGradesCard);

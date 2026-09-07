@@ -1,0 +1,30 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "EduVulcan",
+        "description": "Podaj miasto (segment z adresu uczen.eduvulcan.pl/<miasto>/...) oraz wklej cały nagłówek Cookie z zapytania do uczen.eduvulcan.pl (DevTools -> Network -> dowolne zapytanie do tej domeny -> Headers -> Cookie).",
+        "data": {
+          "city": "Miasto (z adresu URL)",
+          "cookie": "Cookie (wklejone z przeglądarki)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Odśwież sesję EduVulcan",
+        "description": "Ciasteczko wygasło. Zaloguj się ponownie w przeglądarce na eduvulcan.pl (miasto: {city}) i wklej nowy nagłówek Cookie.",
+        "data": {
+          "cookie": "Nowe Cookie"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Ciasteczko jest nieprawidłowe albo wygasło.",
+      "cannot_connect": "Nie udało się połączyć z EduVulcan.",
+      "no_students": "Nie znaleziono żadnych uczniów dla tego konta."
+    },
+    "abort": {
+      "already_configured": "To konto/miasto jest już skonfigurowane.",
+      "reauth_successful": "Sesja odświeżona pomyślnie."
+    }
+  }
+}
