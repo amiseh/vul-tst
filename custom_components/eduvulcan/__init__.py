@@ -45,18 +45,20 @@ async def _async_register_cards(hass: HomeAssistant) -> None:
     dashboardzie, bez żadnej rejestracji ze strony użytkownika.
     """
     flag = f"{DOMAIN}_cards_registered"
+    _LOGGER.info("EduVulcan: _async_register_cards() wywołane, flaga=%s", hass.data.get(flag))
     if hass.data.get(flag):
         return
     hass.data[flag] = True
 
     try:
         www_path = Path(__file__).parent / "www"
+        _LOGGER.info("EduVulcan: rejestruję pliki statyczne z %s (istnieje=%s)", www_path, www_path.exists())
         await hass.http.async_register_static_paths(
             [StaticPathConfig(_STATIC_URL, str(www_path), cache_headers=False)]
         )
         for fname in CARD_FILES:
             add_extra_js_url(hass, f"{_STATIC_URL}/{fname}")
-        _LOGGER.debug("EduVulcan: zarejestrowano %d kart Lovelace pod %s", len(CARD_FILES), _STATIC_URL)
+        _LOGGER.info("EduVulcan: zarejestrowano %d kart Lovelace pod %s", len(CARD_FILES), _STATIC_URL)
     except Exception:  # noqa: BLE001
         _LOGGER.exception(
             "EduVulcan: nie udało się automatycznie zarejestrować kart Lovelace — "
