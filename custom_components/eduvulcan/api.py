@@ -77,8 +77,19 @@ class EduVulcanClient:
         w pamięci, ale trzeba to jawnie odczytać i zapisać z powrotem do
         konfiguracji integracji, inaczej po restarcie HA wrócimy do
         dawno nieaktualnej wartości z momentu wklejenia.
+
+        Celowo POMIJAMY ciasteczka "X-V-RequestVerificationToken#<hash>" —
+        serwer dokłada NOWE (z inną nazwą/hashem) przy każdej wizycie,
+        nigdy nie nadpisując starych, więc ich liczba rosłaby bez końca
+        przy każdym zapisie. Nie są nam potrzebne, bo integracja robi
+        tylko zapytania GET (ochrona CSRF dotyczy zapytań zmieniających
+        stan, czyli POST/PUT, których tu nie ma).
         """
-        return "; ".join(f"{name}={value}" for name, value in self._client.cookies.items())
+        return "; ".join(
+            f"{name}={value}"
+            for name, value in self._client.cookies.items()
+            if not name.startswith("X-V-RequestVerificationToken")
+        )
 
     async def _get_json(self, url: str, params: dict | None = None) -> Any:
         resp = await self._client.get(url, params=params)

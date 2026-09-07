@@ -141,6 +141,14 @@ class EduVulcanCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         new_cookie = self.client.current_cookie_header()
         if not new_cookie or new_cookie == self.entry.data.get(CONF_COOKIE):
             return
+        if len(new_cookie) > 6000:
+            _LOGGER.warning(
+                "EduVulcan: zrotowane ciasteczko jest podejrzanie duże (%d znaków) — "
+                "zapisuję mimo to, ale jeśli reauth zacznie się powtarzać, to prawdopodobnie "
+                "przyczyna: sprawdź czy nie doszło do jeszcze innego niekontrolowanego "
+                "narastania jakiegoś ciasteczka.",
+                len(new_cookie),
+            )
         self.hass.config_entries.async_update_entry(
             self.entry, data={**self.entry.data, CONF_COOKIE: new_cookie}
         )
